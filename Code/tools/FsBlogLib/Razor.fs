@@ -12,19 +12,20 @@ type Razor(layoutsRoot) =
         let config = new TemplateServiceConfiguration()
         config.Namespaces.Add("FsBlogLib") |> ignore
         config.EncodedStringFactory <- new RawStringFactory()
-        config.Resolver <-
-          { new ITemplateResolver with
+        config.TemplateManager <-
+          { new ITemplateManager with
+              member this.AddDynamic(key, source) = raise (System.NotImplementedException())
+              member this.GetKey(name, resolveType, context) = raise (System.NotImplementedException())
               member x.Resolve name =
-                let layoutFile = Path.Combine(layoutsRoot, name + ".cshtml")
-                if File.Exists(layoutFile) then File.ReadAllText(layoutFile)
-                else failwithf "Could not find template file: %s\nSearching in: %s" name layoutsRoot }
+                let layoutFile = Path.Combine(layoutsRoot, name.Name + ".cshtml")
+                LoadedTemplateSource(File.ReadAllText(layoutFile)) :> ITemplateSource}
         config.CompilerServiceFactory <-
           { new ICompilerServiceFactory with
               member x.CreateCompilerService(name) = new RazorEngine.Compilation.CSharp.CSharpDirectCompilerService(false, null) :> _ }
         config.BaseTemplateType <- typedefof<FsBlogLib.TemplateBaseExtensions<_>>
         config.Debug <- true
-        let templateservice = new TemplateService(config)
-        Razor.SetTemplateService(templateservice)
+        let templateservice = RazorEngineService.Create(config)
+        Engine.Razor <- templateservice
 (*
     member x.LoadMarkdownFragment fragment =
         x.viewBag <- new DynamicViewBag()
@@ -51,7 +52,7 @@ type Razor(layoutsRoot) =
     member x.ProcessFile(source) =
       try
         x.ViewBag <- new DynamicViewBag()
-        let html = Razor.Parse(File.ReadAllText(source), x.Model, x.ViewBag, null)
+        let html = Engine.Razor.RunCompile(File.ReadAllText(source), (string)null, x.Model.GetType(), x.Model, x.ViewBag)
         html
       with e ->
         printfn "Something went wrong: %A" e
